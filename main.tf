@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MPL-2.0
 
 provider "aws" {
-  region  = var.aws_region
+  region = var.aws_region
 }
 
 data "aws_availability_zones" "available" {
@@ -15,24 +15,23 @@ module "vpc" {
 
   cidr = var.vpc_cidr_block
 
-  azs             = data.aws_availability_zones.available.names
-  private_subnets = ["10.0.101.0/24", "10.0.102.0/24"]
-  public_subnets  = ["10.0.1.0/24", "10.0.2.0/24"]
+  azs = data.aws_availability_zones.available.names
+
+  private_subnets = slice(var.private_subnet_cidr_blocks, 0, var.private_subnet_count)
+  public_subnets  = slice(var.public_subnet_cidr_blocks, 0, var.public_subnet_count)
 
   enable_nat_gateway = true
   enable_vpn_gateway = var.enable_vpn_gateway
 
-  tags = {
-    project     = "project-alpha",
-    environment = "dev"
-  }
+  tags = var.resource_tags
 }
+
 
 module "app_security_group" {
   source  = "terraform-aws-modules/security-group/aws//modules/web"
   version = "4.17.0"
 
-  name        = "web-sg-project-alpha-dev"
+  name        = "web-sg-${var.resource_tags["project"]}-${var.resource_tags["environment"]}"
   description = "Security group for web-servers with HTTP ports open within VPC"
   vpc_id      = module.vpc.vpc_id
 
@@ -48,7 +47,7 @@ module "lb_security_group" {
   source  = "terraform-aws-modules/security-group/aws//modules/web"
   version = "4.17.0"
 
-  name        = "lb-sg-project-alpha-dev"
+  name        = "lb-sg-${var.resource_tags["project"]}-${var.resource_tags["environment"]}"
   description = "Security group for load balancer with HTTP ports open within VPC"
   vpc_id      = module.vpc.vpc_id
 
@@ -70,7 +69,7 @@ module "elb_http" {
   version = "4.0.1"
 
   # Ensure load balancer name is unique
-  name = "lb-${random_string.lb_id.result}-project-alpha-dev"
+  name = "lb-${random_string.lb_id.result}-${var.resource_tags["project"]}-${var.resource_tags["environment"]}"
 
   internal = false
 
@@ -107,7 +106,7 @@ module "ec2_instances" {
   depends_on = [module.vpc]
 
   instance_count     = var.instance_count
-  instance_type      = "t2.micro"
+  instance_type      = var.ec2_instance_type
   subnet_ids         = module.vpc.private_subnets[*]
   security_group_ids = [module.app_security_group.security_group_id]
 
